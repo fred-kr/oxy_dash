@@ -1,4 +1,5 @@
 import base64
+import csv
 import datetime
 import io
 from collections.abc import Sequence
@@ -456,127 +457,7 @@ app = Dash(__name__, external_stylesheets=[dbc.themes.ZEPHYR])
 server = app.server
 app.config.suppress_callback_exceptions = True
 
-# app.layout = dbc.Container(
-#     [
-#         dbc.Row(
-#             [
-#                 dbc.Col(
-#                     dbc.Card(
-#                         [
-#                             html.Div(
-#                                 [
-#                                     dcc.Upload(
-#                                         id="upload-data",
-#                                         children=html.Div(
-#                                             [
-#                                                 "Drag and Drop or ",
-#                                                 html.A(
-#                                                     "Select File",
-#                                                     style={
-#                                                         "color": "blue",
-#                                                         "textDecoration": "underline",
-#                                                         "cursor": "pointer",
-#                                                     },
-#                                                 ),
-#                                             ]
-#                                         ),
-#                                         multiple=False,
-#                                         style={
-#                                             "width": "100%",
-#                                             "height": "60px",
-#                                             "lineHeight": "60px",
-#                                             "borderWidth": "1px",
-#                                             "borderStyle": "dashed",
-#                                             "borderRadius": "5px",
-#                                             "textAlign": "center",
-#                                             "margin": "10px",
-#                                         },
-#                                     ),
-#                                     dbc.Label("Current File: -", id="current-file-label"),
-#                                 ],
-#                             ),
-#                             html.Div(
-#                                 [
-#                                     dcc.Dropdown(
-#                                         id="x-data",
-#                                         placeholder="Select column for x-axis",
-#                                         style={"flex": "1"},
-#                                     ),
-#                                     dcc.Dropdown(
-#                                         id="y-data",
-#                                         multi=True,
-#                                         placeholder="Select column(s) for y-axis",
-#                                         style={"flex": "1"},
-#                                     ),
-#                                 ],
-#                                 style={"display": "flex", "gap": "10px", "align-items": "center", "margin-top": "10px"},
-#                             ),
-#                             html.Div(
-#                                 [
-#                                     dcc.Dropdown(
-#                                         id="plot-template",
-#                                         options=[t.value for t in PlotlyTheme],
-#                                         value="simple_white",
-#                                         style={"flex": "1"},
-#                                     ),
-#                                     dbc.Button("Plot", id="plot-button", n_clicks=0),
-#                                     dbc.Button("Add Segment", id="add-segment-button", n_clicks=0),
-#                                     dbc.Button("Clear Segments", id="clear-segments-button", n_clicks=0),
-#                                     dbc.Button("Save Segments", id="save-segments-button", n_clicks=0),
-#                                 ],
-#                                 style={"display": "flex", "gap": "10px", "align-items": "center", "margin-top": "10px"},
-#                             ),
-#                         ],
-#                         body=True,
-#                     ),
-#                     width=4,
-#                 ),
-#                 dbc.Col(
-#                     html.Div(
-#                         [
-#                             dag.AgGrid(
-#                                 id="segment-result-grid",
-#                                 columnSize="responsiveSizeToFit",
-#                                 columnDefs=[
-#                                     {"field": "source_file", "headerName": "source_file", "checkboxSelection": True},
-#                                     {"field": "start_index", "headerName": "start_index"},
-#                                     {"field": "end_index", "headerName": "end_index"},
-#                                     {"field": "slope", "headerName": "slope"},
-#                                     {"field": "rsquared", "headerName": "rsquared"},
-#                                 ],
-#                                 rowData=[],
-#                                 csvExportParams={"fileName": "results.csv"},
-#                                 dashGridOptions={
-#                                     "rowSelection": "multiple",
-#                                     "suppressRowClickSelection": True,
-#                                     "animateRows": False,
-#                                 },
-#                             )
-#                         ],
-#                         id="segment-table",
-#                     ),
-#                     width=8,
-#                 ),
-#             ]
-#         ),
-#         dbc.Row(
-#             [
-#                 dbc.Col(dcc.Graph(id="output-graph"), width=12),
-#             ],
-#             style={"margin-top": "10px"},
-#         ),
-#         dbc.Row(
-#             [
-#                 dbc.Col(id="output-data-upload", width=12),
-#             ],
-#             style={"margin-top": "10px"},
-#         ),
-#         dcc.Store(id="uploaded-data"),
-#         dcc.Store(id="data-segments"),
-#     ],
-#     fluid=True,
-#     style={"padding": "10px"},
-# )
+
 # -----------------------------------------------------------------------------
 # Style dictionaries for reuse
 # -----------------------------------------------------------------------------
@@ -628,6 +509,27 @@ app.layout = dbc.Container(
                 dbc.Col(
                     dbc.Card(
                         [
+                            # Inputs for setting skip_rows and separator for the data upload
+                            html.Div(
+                                [
+                                    dbc.Label("Skip Rows"),
+                                    dbc.Input(id="skip-rows", type="number", value=0, min=0, style={"flex": "1"}),
+                                    dbc.Label("Column Separator"),
+                                    dcc.Dropdown(
+                                        id="separator",
+                                        options=[
+                                            {"label": "Detect Automatically", "value": "auto"},
+                                            {"label": "Comma (,)", "value": ","},
+                                            {"label": "Semicolon (;)", "value": ";"},
+                                            {"label": "Tab (\\t)", "value": "\t"},
+                                            {"label": "Pipe (|)", "value": "|"},
+                                        ],
+                                        value="auto",
+                                        style={"flex": "1"},
+                                    ),
+                                ],
+                                style=container_style,
+                            ),
                             # File upload section
                             html.Div(
                                 [
@@ -723,15 +625,69 @@ app.layout = dbc.Container(
 )
 
 
-def parse_contents(contents: str, filename: str, date: float) -> tuple[html.Div, pl.DataFrame]:
+def detect_delimiter(decoded_string: str, max_rows: int = 3, skip_rows: int = 0) -> str:
+    """
+    Automatically detects the delimiter used in a text file containing tabular data.
+
+    Args:
+        decoded_string (str): The content of the file as a decoded string.
+        max_rows (int): The number of rows to read from the file for analysis.
+        skip_rows (int): The number of rows to skip before starting the analysis.
+
+    Returns:
+        str: The detected delimiter character.
+
+    Raises:
+        ValueError: If the delimiter cannot be detected.
+        FileNotFoundError: If the file does not exist.
+        ValueError: If max_rows is not a positive integer.
+    """
+    if max_rows <= 0:
+        raise ValueError("max_rows must be a positive integer")
+
+    try:
+        with open(io.StringIO(decoded_string).name, "r") as file:
+            # Check if the file is empty
+            if file.readline() == "":
+                raise ValueError("File is empty")
+
+            # Skip the specified number of rows
+            for _ in range(skip_rows):
+                file.readline()
+
+            # Read the first max_rows rows and join them into a single string
+            sample = "\n".join(file.readline() for _ in range(max_rows - 1))
+    except Exception as e:
+        raise ValueError(f"Error reading file: {str(e)}") from e
+
+    # Create a Sniffer instance
+    sniffer = csv.Sniffer()
+
+    try:
+        # Attempt to detect the dialect from the sample text
+        dialect = sniffer.sniff(sample)
+        return dialect.delimiter
+    except csv.Error as e:
+        # Raise an exception if the delimiter cannot be detected
+        raise ValueError(f"Delimiter detection failed. {str(e)}") from e
+
+
+def parse_contents(
+    contents: str, filename: str, date: float, skip_rows: int = 0, separator: str = "auto"
+) -> tuple[html.Div, pl.DataFrame]:
     content_type, content_string = contents.split(",")
+    print(content_type)
 
     decoded = base64.b64decode(content_string)
+    suffix = Path(filename).suffix
     try:
-        if "csv" in filename:
-            # Assume that the user uploaded a CSV file
-            df = pl.read_csv(io.StringIO(decoded.decode("utf-8")))
-        elif "xls" in filename:
+        if "csv" in suffix or "txt" in suffix or "tsv" in suffix:
+            content = decoded.decode("ansi")
+            if separator == "auto":
+                separator = detect_delimiter(content, skip_rows=skip_rows)
+
+            df = pl.read_csv(content, skip_rows=skip_rows, separator=separator)
+        elif "xls" in suffix:
             # Assume that the user uploaded an excel file
             df = pl.read_excel(io.BytesIO(decoded))
         else:
@@ -762,12 +718,14 @@ def parse_contents(contents: str, filename: str, date: float) -> tuple[html.Div,
     Input("upload-data", "contents"),
     State("upload-data", "filename"),
     State("upload-data", "last_modified"),
+    State("skip-rows", "value"),
+    State("separator", "value"),
 )
 def update_output(
-    content: str | None, name: str, date: float
+    content: str | None, name: str, date: float, skip_rows: int, separator: str
 ) -> tuple[list[html.Div], UploadedData, list[str], list[str], str]:
     if content is not None:
-        div, df = parse_contents(content, name, date)
+        div, df = parse_contents(content, name, date, skip_rows, separator)
         return [div], {"name": name, "data": df.write_json()}, df.columns, df.columns, f"Current File: {name}"
 
     return [], {"name": "", "data": ""}, [], [], "Current File: -"
@@ -803,7 +761,7 @@ def update_graph(n_clicks: int, template: PlotlyTemplate, data: UploadedData, x:
 def update_segments(
     n_clicks: int, selected_data: SelectedData | None, segments: list[DataSegmentDict]
 ) -> tuple[list[DataSegmentDict], go.Figure, list[dict[str, Any]]]:
-    if not n_clicks or n_clicks == 0 or not selected_data:
+    if not n_clicks or not selected_data:
         return [], DataSegment.source_fig, []
     start = selected_data["points"][0]["pointIndex"]
     end = selected_data["points"][-1]["pointIndex"]
