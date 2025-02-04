@@ -12,9 +12,3 @@ dependencies = [
     "polars[excel]==1.21.0",
     "scipy==1.15.1",
 ]
-
-[dependency-groups]
-dev = [
-    "pyinstaller>=6.11.1",
-    "pyinstaller-hooks-contrib>=2025.1",
-]

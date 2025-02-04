@@ -456,13 +456,179 @@ app = Dash(__name__, external_stylesheets=[dbc.themes.ZEPHYR])
 server = app.server
 app.config.suppress_callback_exceptions = True
 
+# app.layout = dbc.Container(
+#     [
+#         dbc.Row(
+#             [
+#                 dbc.Col(
+#                     dbc.Card(
+#                         [
+#                             html.Div(
+#                                 [
+#                                     dcc.Upload(
+#                                         id="upload-data",
+#                                         children=html.Div(
+#                                             [
+#                                                 "Drag and Drop or ",
+#                                                 html.A(
+#                                                     "Select File",
+#                                                     style={
+#                                                         "color": "blue",
+#                                                         "textDecoration": "underline",
+#                                                         "cursor": "pointer",
+#                                                     },
+#                                                 ),
+#                                             ]
+#                                         ),
+#                                         multiple=False,
+#                                         style={
+#                                             "width": "100%",
+#                                             "height": "60px",
+#                                             "lineHeight": "60px",
+#                                             "borderWidth": "1px",
+#                                             "borderStyle": "dashed",
+#                                             "borderRadius": "5px",
+#                                             "textAlign": "center",
+#                                             "margin": "10px",
+#                                         },
+#                                     ),
+#                                     dbc.Label("Current File: -", id="current-file-label"),
+#                                 ],
+#                             ),
+#                             html.Div(
+#                                 [
+#                                     dcc.Dropdown(
+#                                         id="x-data",
+#                                         placeholder="Select column for x-axis",
+#                                         style={"flex": "1"},
+#                                     ),
+#                                     dcc.Dropdown(
+#                                         id="y-data",
+#                                         multi=True,
+#                                         placeholder="Select column(s) for y-axis",
+#                                         style={"flex": "1"},
+#                                     ),
+#                                 ],
+#                                 style={"display": "flex", "gap": "10px", "align-items": "center", "margin-top": "10px"},
+#                             ),
+#                             html.Div(
+#                                 [
+#                                     dcc.Dropdown(
+#                                         id="plot-template",
+#                                         options=[t.value for t in PlotlyTheme],
+#                                         value="simple_white",
+#                                         style={"flex": "1"},
+#                                     ),
+#                                     dbc.Button("Plot", id="plot-button", n_clicks=0),
+#                                     dbc.Button("Add Segment", id="add-segment-button", n_clicks=0),
+#                                     dbc.Button("Clear Segments", id="clear-segments-button", n_clicks=0),
+#                                     dbc.Button("Save Segments", id="save-segments-button", n_clicks=0),
+#                                 ],
+#                                 style={"display": "flex", "gap": "10px", "align-items": "center", "margin-top": "10px"},
+#                             ),
+#                         ],
+#                         body=True,
+#                     ),
+#                     width=4,
+#                 ),
+#                 dbc.Col(
+#                     html.Div(
+#                         [
+#                             dag.AgGrid(
+#                                 id="segment-result-grid",
+#                                 columnSize="responsiveSizeToFit",
+#                                 columnDefs=[
+#                                     {"field": "source_file", "headerName": "source_file", "checkboxSelection": True},
+#                                     {"field": "start_index", "headerName": "start_index"},
+#                                     {"field": "end_index", "headerName": "end_index"},
+#                                     {"field": "slope", "headerName": "slope"},
+#                                     {"field": "rsquared", "headerName": "rsquared"},
+#                                 ],
+#                                 rowData=[],
+#                                 csvExportParams={"fileName": "results.csv"},
+#                                 dashGridOptions={
+#                                     "rowSelection": "multiple",
+#                                     "suppressRowClickSelection": True,
+#                                     "animateRows": False,
+#                                 },
+#                             )
+#                         ],
+#                         id="segment-table",
+#                     ),
+#                     width=8,
+#                 ),
+#             ]
+#         ),
+#         dbc.Row(
+#             [
+#                 dbc.Col(dcc.Graph(id="output-graph"), width=12),
+#             ],
+#             style={"margin-top": "10px"},
+#         ),
+#         dbc.Row(
+#             [
+#                 dbc.Col(id="output-data-upload", width=12),
+#             ],
+#             style={"margin-top": "10px"},
+#         ),
+#         dcc.Store(id="uploaded-data"),
+#         dcc.Store(id="data-segments"),
+#     ],
+#     fluid=True,
+#     style={"padding": "10px"},
+# )
+# -----------------------------------------------------------------------------
+# Style dictionaries for reuse
+# -----------------------------------------------------------------------------
+upload_style = {
+    "width": "100%",
+    "height": "60px",
+    "lineHeight": "60px",
+    "borderWidth": "1px",
+    "borderStyle": "dashed",
+    "borderRadius": "5px",
+    "textAlign": "center",
+    "margin": "10px",
+}
+
+upload_link_style = {
+    "color": "blue",
+    "textDecoration": "underline",
+    "cursor": "pointer",
+}
+
+flex_container_style = {
+    "display": "flex",
+    "gap": "10px",
+    "align-items": "center",
+    "margin-top": "10px",
+}
+
+container_style = {"padding": "10px"}
+
+# -----------------------------------------------------------------------------
+# Column definitions for the segment results grid
+# -----------------------------------------------------------------------------
+segment_grid_columns: list[dict[str, Any]] = [
+    {"field": "source_file", "headerName": "source_file", "checkboxSelection": True},
+    {"field": "start_index", "headerName": "start_index"},
+    {"field": "end_index", "headerName": "end_index"},
+    {"field": "slope", "headerName": "slope"},
+    {"field": "rsquared", "headerName": "rsquared"},
+]
+
+# -----------------------------------------------------------------------------
+# App layout
+# -----------------------------------------------------------------------------
 app.layout = dbc.Container(
     [
         dbc.Row(
             [
+                # Left column: Card with file upload, dropdowns, and buttons
                 dbc.Col(
                     dbc.Card(
                         [
+                            # File upload section
                             html.Div(
                                 [
                                     dcc.Upload(
@@ -470,31 +636,16 @@ app.layout = dbc.Container(
                                         children=html.Div(
                                             [
                                                 "Drag and Drop or ",
-                                                html.A(
-                                                    "Select File",
-                                                    style={
-                                                        "color": "blue",
-                                                        "textDecoration": "underline",
-                                                        "cursor": "pointer",
-                                                    },
-                                                ),
+                                                html.A("Select File", style=upload_link_style),
                                             ]
                                         ),
                                         multiple=False,
-                                        style={
-                                            "width": "100%",
-                                            "height": "60px",
-                                            "lineHeight": "60px",
-                                            "borderWidth": "1px",
-                                            "borderStyle": "dashed",
-                                            "borderRadius": "5px",
-                                            "textAlign": "center",
-                                            "margin": "10px",
-                                        },
+                                        style=upload_style,
                                     ),
                                     dbc.Label("Current File: -", id="current-file-label"),
-                                ],
+                                ]
                             ),
+                            # Dropdowns for selecting x and y columns
                             html.Div(
                                 [
                                     dcc.Dropdown(
@@ -509,8 +660,9 @@ app.layout = dbc.Container(
                                         style={"flex": "1"},
                                     ),
                                 ],
-                                style={"display": "flex", "gap": "10px", "align-items": "center", "margin-top": "10px"},
+                                style=flex_container_style,
                             ),
+                            # Dropdown for plot template and control buttons
                             html.Div(
                                 [
                                     dcc.Dropdown(
@@ -524,58 +676,50 @@ app.layout = dbc.Container(
                                     dbc.Button("Clear Segments", id="clear-segments-button", n_clicks=0),
                                     dbc.Button("Save Segments", id="save-segments-button", n_clicks=0),
                                 ],
-                                style={"display": "flex", "gap": "10px", "align-items": "center", "margin-top": "10px"},
+                                style=flex_container_style,
                             ),
                         ],
                         body=True,
                     ),
                     width=4,
                 ),
+                # Right column: Data grid for segment results
                 dbc.Col(
                     html.Div(
-                        [
-                            dag.AgGrid(
-                                id="segment-result-grid",
-                                columnSize="responsiveSizeToFit",
-                                columnDefs=[
-                                    {"field": "source_file", "headerName": "source_file", "checkboxSelection": True},
-                                    {"field": "start_index", "headerName": "start_index"},
-                                    {"field": "end_index", "headerName": "end_index"},
-                                    {"field": "slope", "headerName": "slope"},
-                                    {"field": "rsquared", "headerName": "rsquared"},
-                                ],
-                                rowData=[],
-                                csvExportParams={"fileName": "results.csv"},
-                                dashGridOptions={
-                                    "rowSelection": "multiple",
-                                    "suppressRowClickSelection": True,
-                                    "animateRows": False,
-                                },
-                            )
-                        ],
+                        dag.AgGrid(
+                            id="segment-result-grid",
+                            columnSize="responsiveSizeToFit",
+                            columnDefs=segment_grid_columns,
+                            rowData=[],
+                            csvExportParams={"fileName": "results.csv"},
+                            dashGridOptions={
+                                "rowSelection": "multiple",
+                                "suppressRowClickSelection": True,
+                                "animateRows": False,
+                            },
+                        ),
                         id="segment-table",
                     ),
                     width=8,
                 ),
             ]
         ),
+        # Row for the graph output
         dbc.Row(
-            [
-                dbc.Col(dcc.Graph(id="output-graph"), width=12),
-            ],
+            dbc.Col(dcc.Graph(id="output-graph"), width=12),
             style={"margin-top": "10px"},
         ),
+        # Row for data upload output (if any)
         dbc.Row(
-            [
-                dbc.Col(id="output-data-upload", width=12),
-            ],
+            dbc.Col(id="output-data-upload", width=12),
             style={"margin-top": "10px"},
         ),
+        # Hidden stores for intermediate data
         dcc.Store(id="uploaded-data"),
         dcc.Store(id="data-segments"),
     ],
     fluid=True,
-    style={"padding": "10px"},
+    style=container_style,
 )
 
 
@@ -639,7 +783,7 @@ def update_output(
     prevent_initial_call=True,
 )
 def update_graph(n_clicks: int, template: PlotlyTemplate, data: UploadedData, x: str, y: list[str]) -> go.Figure:
-    if n_clicks is None or n_clicks == 0 or not data:
+    if not n_clicks or not data:
         return go.Figure()
     df = pl.read_json(io.StringIO(data["data"]))
     lopts = LayoutOpts(theme=template, width=1600, height=1000)
@@ -659,7 +803,7 @@ def update_graph(n_clicks: int, template: PlotlyTemplate, data: UploadedData, x:
 def update_segments(
     n_clicks: int, selected_data: SelectedData | None, segments: list[DataSegmentDict]
 ) -> tuple[list[DataSegmentDict], go.Figure, list[dict[str, Any]]]:
-    if n_clicks is None or n_clicks == 0 or not selected_data:
+    if not n_clicks or n_clicks == 0 or not selected_data:
         return [], DataSegment.source_fig, []
     start = selected_data["points"][0]["pointIndex"]
     end = selected_data["points"][-1]["pointIndex"]
