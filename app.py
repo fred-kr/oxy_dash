@@ -12,6 +12,7 @@ import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import polars as pl
+# import polars.selectors as cs
 from dash import Dash, Input, Output, State, callback, dcc, html
 from scipy import stats
 
@@ -646,7 +647,7 @@ def detect_delimiter(decoded_string: str, max_rows: int = 3, skip_rows: int = 0)
         raise ValueError("max_rows must be a positive integer")
 
     try:
-        with open(io.StringIO(decoded_string).name, "r") as file:
+        with io.StringIO(decoded_string) as file:
             # Check if the file is empty
             if file.readline() == "":
                 raise ValueError("File is empty")
@@ -676,17 +677,16 @@ def parse_contents(
     contents: str, filename: str, date: float, skip_rows: int = 0, separator: str = "auto"
 ) -> tuple[html.Div, pl.DataFrame]:
     content_type, content_string = contents.split(",")
-    print(content_type)
-
     decoded = base64.b64decode(content_string)
     suffix = Path(filename).suffix
     try:
         if "csv" in suffix or "txt" in suffix or "tsv" in suffix:
-            content = decoded.decode("ansi")
+            content = decoded.decode("utf-8", errors="replace")
             if separator == "auto":
                 separator = detect_delimiter(content, skip_rows=skip_rows)
-
-            df = pl.read_csv(content, skip_rows=skip_rows, separator=separator)
+            df = pl.read_csv(io.StringIO(content), skip_rows=skip_rows, separator=separator)
+            # In case of files produced by Presens OxyView, the columns can contain a variable amount of whitespace
+            # after the separator character, which causes all columns to be interpreted as strings.
         elif "xls" in suffix:
             # Assume that the user uploaded an excel file
             df = pl.read_excel(io.BytesIO(decoded))
@@ -740,12 +740,12 @@ def update_output(
     State("y-data", "value"),
     prevent_initial_call=True,
 )
-def update_graph(n_clicks: int, template: PlotlyTemplate, data: UploadedData, x: str, y: list[str]) -> go.Figure:
+def update_graph(n_clicks: int, template: PlotlyTemplate, data: UploadedData, x_col: str, y_cols: list[str]) -> go.Figure:
     if not n_clicks or not data:
         return go.Figure()
     df = pl.read_json(io.StringIO(data["data"]))
     lopts = LayoutOpts(theme=template, width=1600, height=1000)
-    DataSegment.set_source(data["name"], df, x, y[0], y[1] if len(y) > 1 else None, lopts)
+    DataSegment.set_source(data["name"], df, x_col, y_cols[0], y_cols[1] if len(y_cols) > 1 else None, lopts)
     return DataSegment.source_fig
 
 
