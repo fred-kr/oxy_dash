@@ -1,6 +1,3 @@
-import base64
-import csv
-import datetime
 import io
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -12,9 +9,10 @@ import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import polars as pl
-# import polars.selectors as cs
 from dash import Dash, Input, Output, State, callback, dcc, html
 from scipy import stats
+
+from _utils import parse_contents
 
 type PlotlyTemplate = Literal[
     "ggplot2",
@@ -626,89 +624,6 @@ app.layout = dbc.Container(
 )
 
 
-def detect_delimiter(decoded_string: str, max_rows: int = 3, skip_rows: int = 0) -> str:
-    """
-    Automatically detects the delimiter used in a text file containing tabular data.
-
-    Args:
-        decoded_string (str): The content of the file as a decoded string.
-        max_rows (int): The number of rows to read from the file for analysis.
-        skip_rows (int): The number of rows to skip before starting the analysis.
-
-    Returns:
-        str: The detected delimiter character.
-
-    Raises:
-        ValueError: If the delimiter cannot be detected.
-        FileNotFoundError: If the file does not exist.
-        ValueError: If max_rows is not a positive integer.
-    """
-    if max_rows <= 0:
-        raise ValueError("max_rows must be a positive integer")
-
-    try:
-        with io.StringIO(decoded_string) as file:
-            # Check if the file is empty
-            if file.readline() == "":
-                raise ValueError("File is empty")
-
-            # Skip the specified number of rows
-            for _ in range(skip_rows):
-                file.readline()
-
-            # Read the first max_rows rows and join them into a single string
-            sample = "\n".join(file.readline() for _ in range(max_rows - 1))
-    except Exception as e:
-        raise ValueError(f"Error reading file: {str(e)}") from e
-
-    # Create a Sniffer instance
-    sniffer = csv.Sniffer()
-
-    try:
-        # Attempt to detect the dialect from the sample text
-        dialect = sniffer.sniff(sample)
-        return dialect.delimiter
-    except csv.Error as e:
-        # Raise an exception if the delimiter cannot be detected
-        raise ValueError(f"Delimiter detection failed. {str(e)}") from e
-
-
-def parse_contents(
-    contents: str, filename: str, date: float, skip_rows: int = 0, separator: str = "auto"
-) -> tuple[html.Div, pl.DataFrame]:
-    content_type, content_string = contents.split(",")
-    decoded = base64.b64decode(content_string)
-    suffix = Path(filename).suffix
-    try:
-        if "csv" in suffix or "txt" in suffix or "tsv" in suffix:
-            content = decoded.decode("utf-8", errors="replace")
-            if separator == "auto":
-                separator = detect_delimiter(content, skip_rows=skip_rows)
-            df = pl.read_csv(io.StringIO(content), skip_rows=skip_rows, separator=separator)
-            # In case of files produced by Presens OxyView, the columns can contain a variable amount of whitespace
-            # after the separator character, which causes all columns to be interpreted as strings.
-        elif "xls" in suffix:
-            # Assume that the user uploaded an excel file
-            df = pl.read_excel(io.BytesIO(decoded))
-        else:
-            return html.Div(["There was an error processing this file."]), pl.DataFrame()
-    except Exception as e:
-        print(e)
-        return html.Div(["There was an error processing this file."]), pl.DataFrame()
-
-    return html.Div(
-        [
-            html.H5(filename),
-            html.H6(datetime.datetime.fromtimestamp(date)),
-            dag.AgGrid(
-                columnSize="sizeToFit",
-                columnDefs=[{"field": col_name} for col_name in df.columns],
-                rowData=df.to_dicts(),
-            ),
-        ]
-    ), df
-
-
 @callback(
     Output("output-data-upload", "children"),
     Output("uploaded-data", "data"),
@@ -740,7 +655,9 @@ def update_output(
     State("y-data", "value"),
     prevent_initial_call=True,
 )
-def update_graph(n_clicks: int, template: PlotlyTemplate, data: UploadedData, x_col: str, y_cols: list[str]) -> go.Figure:
+def update_graph(
+    n_clicks: int, template: PlotlyTemplate, data: UploadedData, x_col: str, y_cols: list[str]
+) -> go.Figure:
     if not n_clicks or not data:
         return go.Figure()
     df = pl.read_json(io.StringIO(data["data"]))
